@@ -1,0 +1,56 @@
+---
+- name: Deploy static website (simple, no fallback, no directory listing)
+  hosts: webservers
+  become: true
+
+  vars:
+    web_root: /var/www/html
+    app_src: "{{ app_src }}"   # MUST be passed explicitly:  -e app_src=/path/to/app
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Apache
+      apt:
+        name: apache2
+        state: present
+
+    - name: Ensure Apache is running and enabled
+      service:
+        name: apache2
+        state: started
+        enabled: yes
+
+    # Validate source path on controller
+    - name: Validate app_src exists
+      delegate_to: localhost
+      become: false
+      stat:
+        path: "{{ app_src }}"
+      register: app_src_stat
+
+    - name: Stop if app_src path is invalid
+      delegate_to: localhost
+      become: false
+      fail:
+        msg: "Source folder not found: {{ app_src }}. Pass correct -e app_src=/path/to/app"
+      when: not app_src_stat.stat.exists
+
+    - name: Ensure web root exists
+      file:
+        path: "{{ web_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Deploy website files
+      copy:
+        src: "{{ app_src }}/"
+        dest: "{{ web_root }}/"
+        owner: www-data
+        group: www-data
+        mode: "0644"
